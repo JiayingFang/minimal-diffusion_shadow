@@ -99,6 +99,26 @@ def get_metadata(name):
                 "num_channels": 3,
             }
         )
+    elif name == "shadow":
+        metadata = EasyDict(
+            {
+                "image_size": 128,
+                "num_classes": 6,
+                "train_images": 12913,
+                "val_images": 152,
+                "num_channels": 1,
+            }
+        )
+    elif name == "shadow_memory":
+        metadata = EasyDict(
+            {
+                "image_size": (64, 128),
+                "num_classes": 7,
+                "train_images": 37132,
+                "val_images": 297,
+                "num_channels": 1,
+            }
+        )
     else:
         raise ValueError(f"{name} dataset nor supported!")
     return metadata
@@ -126,6 +146,81 @@ class oxford_flowers_dataset(Dataset):
     def __getitem__(self, idx):
         image = Image.open(self.images[idx]).convert("RGB")
         target = self.targets[idx]
+        if self.transform is not None:
+            image = self.transform(image)
+        return image, target
+
+class shadow_dataset(Dataset):
+    def __init__(self, root_dir, transform=None):
+        self.images = []
+        self.targets = []
+        self.transform = transform
+        self.targets_npy = np.load(os.path.join(root_dir, "finger_dots_w_frame_label.npy"))
+
+        # Hard coded from dataset
+        # leaving out two evaluation sequencesone, one sequence from jiaying's demo, one sequence from marion's demo
+        for i in range(152, 37289):
+            self.images.append(
+                os.path.join(
+                    root_dir, "mask_img", "".join(["0"] * (5 - len(str(i)))) + str(i) + ".png",
+                )
+            )
+            self.targets.append(self.targets_npy[i])
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        image = Image.open(self.images[idx]).convert("L")
+        target = self.targets[idx]
+        # Transformation
+        if self.transform is not None:
+            image = self.transform(image)
+        return image, target
+
+class shadow_memory_dataset(Dataset):
+    def __init__(self, root_dir, transform=None):
+        self.images = []
+        self.targets = []
+        self.transform = transform
+        self.targets_npy = np.load(os.path.join(root_dir, "finger_dots_w_frame_label.npy"))
+
+        # Hard coded from dataset
+        # leaving out two evaluation sequencesone, one sequence from jiaying's demo, one sequence from marion's demo
+        for i in range(157, 37289):
+            if self.targets_npy[i][-1] == 0:
+                self.images.append(
+                    [os.path.join(
+                        root_dir, "mask_img", "".join(["0"] * (5 - len(str(i)))) + str(i) + ".png",
+                    ),
+                    os.path.join(
+                        root_dir, "mask_img", "".join(["0"] * (5 - len(str(i+1)))) + str(i+1) + ".png",
+                    )
+                    ]
+                )
+            else:
+                self.images.append(
+                    [os.path.join(
+                        root_dir, "mask_img", "".join(["0"] * (5 - len(str(i)))) + str(i) + ".png",
+                    ),
+                    os.path.join(
+                        root_dir, "mask_img", "".join(["0"] * (5 - len(str(i)))) + str(i) + ".png",
+                    )
+                    ]
+                )
+            self.targets.append(self.targets_npy[i][:7])
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        # Concatenate images
+        image0 = Image.open(self.images[idx][0]).convert("L")
+        image1 = Image.open(self.images[idx][1]).convert("L")
+        image = np.concatenate((np.array(image0), np.array(image1)), axis=1)
+        image = Image.fromarray(image.astype('uint8'), 'L')
+        target = self.targets[idx]
+        # Transformation
         if self.transform is not None:
             image = self.transform(image)
         return image, target
@@ -250,6 +345,28 @@ def get_dataset(name, data_dir, metadata):
         train_set = datasets.ImageFolder(
             data_dir,
             transform=transform_train,
+        )
+    elif name == "shadow":
+        transform_train = transforms.Compose(
+            [
+                transforms.Resize((128, 128)),
+                transforms.ToTensor(),
+            ]
+        )
+        train_set = shadow_dataset(
+            data_dir,
+            transform_train,
+        )
+    elif name == "shadow_memory":
+        transform_train = transforms.Compose(
+            [
+                transforms.Resize((64, 128)),
+                transforms.ToTensor(),
+            ]
+        )
+        train_set = shadow_memory_dataset(
+            data_dir,
+            transform_train,
         )
     else:
         raise ValueError(f"{name} dataset nor supported!")
